@@ -1,0 +1,59 @@
+{
+  "_from": "homebridge-weatherstation-rainy",
+  "_id": "homebridge-weatherstation-rainy@1.0.0",
+  "_inBundle": false,
+  "_integrity": "sha512-lSmzRuqEuXAyAM5taYVfMrTta28JfZWHUqmAkMc9hExrA+BJSA8VVizM6dc8TopJ1O7lPHRg+Z5IVBnb2meBJA==",
+  "_location": "/homebridge-weatherstation-rainy",
+  "_phantomChildren": {},
+  "_requested": {
+    "type": "tag",
+    "registry": true,
+    "raw": "homebridge-weatherstation-rainy",
+    "name": "homebridge-weatherstation-rainy",
+    "escapedName": "homebridge-weatherstation-rainy",
+    "rawSpec": "",
+    "saveSpec": null,
+    "fetchSpec": "latest"
+  },
+  "_requiredBy": [
+    "#USER",
+    "/"
+  ],
+  "_resolved": "https://registry.npmjs.org/homebridge-weatherstation-rainy/-/homebridge-weatherstation-rainy-1.0.0.tgz",
+  "_shasum": "5b70b119d590ce05fc6591789463bbc5b3030812",
+  "_spec": "homebridge-weatherstation-rainy",
+  "_where": "/home/pi/homebridge-weatherstation-rainy",
+  "author": {
+    "name": "Thomas Nemec"
+  },
+  "bugs": {
+    "url": "https://github.com/thncode/homebridge-weatherstation-rainy/issues"
+  },
+  "bundleDependencies": false,
+  "dependencies": {
+    "fakegato-history": "^0.5.3"
+  },
+  "deprecated": false,
+  "description": "This is a homebridge plugin for local weather stations",
+  "engines": {
+    "homebridge": ">=0.2.0",
+    "node": ">=0.12.0"
+  },
+  "homepage": "https://github.com/thncode/homebridge-weatherstation-rainy#readme",
+  "keywords": [
+    "homebridge",
+    "homebridge-plugin",
+    "HomeKit"
+  ],
+  "license": "ISC",
+  "main": "index.js",
+  "name": "homebridge-weatherstation-rainy",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/thncode/homebridge-weatherstation-rainy.git"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "version": "1.0.0"
+}
