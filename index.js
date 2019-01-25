@@ -1,23 +1,13 @@
-var Service, Characteristic, HomebridgeAPI, FakeGatoHistoryService;
+var Service, Characteristic, HomebridgeAPI, UUIDGen, FakeGatoHistoryService;
 var inherits = require('util').inherits;
 var os = require("os");
 var hostname = os.hostname();
 const fs = require('fs');
 const moment = require('moment');
 
-
-var intervalID;
-
 const readFile = "/home/pi/WeatherStation/data.txt";
 
-var rain;
-var battery;
-
-var alertLevel;
-
-var glog;
-var ctime;
-
+var rain, battery, alertLevel, readTime, raining, wasRaining;
 var lastActivation, lastReset, lastChange, timesOpened, timeOpen, timeClose;
 
 module.exports = function (homebridge) {
@@ -25,90 +15,95 @@ module.exports = function (homebridge) {
     Service = homebridge.hap.Service;
     Characteristic = homebridge.hap.Characteristic;
     HomebridgeAPI = homebridge;
+    UUIDGen = homebridge.hap.uuid;
     FakeGatoHistoryService = require("fakegato-history")(homebridge);
 
     homebridge.registerAccessory("homebridge-weatherstation-rainy", "WeatherStationRainy", WeatherStationRainy);
 };
 
 
-function read() {
-	var data = fs.readFileSync(readFile, "utf-8");
-	var lastSync = Date.parse(data.substring(0, 19));
-	rain = parseFloat(data.substring(55)) * 10;
-	battery = parseFloat(data.substring(57));
-}
-
-
 function WeatherStationRainy(log, config) {
+
     var that = this;
-    this.log = glog = log;
+    this.log = log;
     this.name = config.name;
     this.displayName = this.name;
     this.deviceId = config.deviceId;
-    this.interval = Math.min(Math.max(config.interval, 1), 60);
 
     this.config = config;
 
-    this.storedData = {};
-
-	  alertLevel = config['alertLevel'];
+	alertLevel = config['alertLevel'];
 
     this.setUpServices();
-    
-    read();
 
-	intervalID = setInterval(function() {
-		
-		var stats = fs.statSync(readFile);
-		
-		var doit = false;
-		if (ctime) {
-			if (ctime.getTime() != stats.mtime.getTime()) {
-				ctime = stats.mtime;
-				doit = true;
-			}
-		}
-		else {
-			ctime = stats.mtime;
-			doit = true;
-		}
-			
-		if (doit) {
-			read();
-			glog("Rain data: ", rain, alertLevel, battery);
+    this.readData();
 
-			that.fakeGatoHistoryService.addEntry({
-				time: new Date().getTime() / 1000,
-				status: rain > alertLevel ? 1 : 0
-				});
-		}
-	}, 2000);
+   	fs.watch(readFile, (event, filename) => {
+   		if (event === 'change') this.readData();
+   	});
 };
+
+
+WeatherStationRainy.prototype.readData = function () {
+
+	var data = fs.readFileSync(readFile, "utf-8");
+	var lastSync = Date.parse(data.substring(0, 19));
+	if (readTime == lastSync) return;
+	readTime = lastSync;
+
+	rain = parseFloat(data.substring(55));
+	battery = parseFloat(data.substring(57));
+	
+	raining = rain > alertLevel ? 1 : 0;
+	
+	this.log("Rain data: ", rain, alertLevel, battery);
+	
+	if (raining != wasRaining) {
+		
+		wasRaining = raining;
+
+		this.fakeGatoHistoryService.addEntry({ time: moment().unix(), status: raining });
+	
+	    this.rainAlertService.getCharacteristic(Characteristic.ContactSensorState).updateValue(raining, null);
+	    
+	    if (raining) {
+		    this.timesOpened = this.timesOpened + 1;
+	        this.timeClose = this.timeClose + (moment().unix() - this.lastChange);
+		    this.lastActivation = moment().unix() - this.fakeGatoHistoryService.getInitialTime();
+	    	this.rainAlertService.getCharacteristic(Characteristic.TimesOpened).updateValue(this.timesOpened, null);
+		    this.rainAlertService.getCharacteristic(Characteristic.LastActivation).updateValue(this.lastActivation, null)
+	    }
+	    else {
+			this.timeOpen = this.timeOpen + (moment().unix() - this.lastChange);
+	    }
+	
+		this.lastChange = moment().unix();
+		this.fakeGatoHistoryService.setExtraPersistedData([{"lastActivation": this.lastActivation, "lastReset": this.lastReset, "lastChange": this.lastChange, 
+															"timesOpened": this.timesOpened, "timeOpen": this.timeOpen, "timeClose": this.timeClose}]);
+	}
+    this.batteryService.getCharacteristic(Characteristic.BatteryLevel).updateValue(null);
+    this.batteryService.getCharacteristic(Characteristic.StatusLowBattery).updateValue(null);
+}; 
 
 
 WeatherStationRainy.prototype.getFirmwareRevision = function (callback) {
-    callback(null, '1.0.0');
+    return callback(null, '1.0');
 };
 
 WeatherStationRainy.prototype.getBatteryLevel = function (callback) {
-	var perc = (battery - 0.8) * 100;
-    callback(null,perc);
+    return callback(null, (battery - 0.8) * 100);
 };
 
 WeatherStationRainy.prototype.getStatusActive = function (callback) {
-    callback(null, true);
+    return callback(null, true);
 };
 
 WeatherStationRainy.prototype.getStatusLowBattery = function (callback) {
-	if (battery >= 0.8)
-        callback(null, Characteristic.StatusLowBattery.BATTERY_LEVEL_NORMAL);
-    else
-        callback(null, Characteristic.StatusLowBattery.BATTERY_LEVEL_LOW);
+    return callback(null, battery >= 0.8 ? Characteristic.StatusLowBattery.BATTERY_LEVEL_NORMAL : Characteristic.StatusLowBattery.BATTERY_LEVEL_LOW);
 };
 
 WeatherStationRainy.prototype.getStatusRain = function (callback) {	
-    callback(null, rain > alertLevel ? 
-    		 Characteristic.ContactSensorState.CONTACT_NOT_DETECTED : Characteristic.ContactSensorState.CONTACT_DETECTED);
+    return callback(null, raining);
 };
 
 
@@ -157,7 +152,7 @@ WeatherStationRainy.prototype.setReset = function (value, callback) {
 
 
 WeatherStationRainy.prototype.setUpServices = function () {
-    // info service
+	
     this.informationService = new Service.AccessoryInformation();
 
     this.informationService
@@ -224,7 +219,6 @@ WeatherStationRainy.prototype.setUpServices = function () {
     	 Characteristic.call(this, 'times opened', 'E863F129-079E-48FF-8F27-9C2605A29F52');
          this.setProps({
            format: Characteristic.Formats.UINT32,
-           //unit: Characteristic.Units.SECONDS,
            perms: [Characteristic.Perms.READ, Characteristic.Perms.NOTIFY]
          });
          this.value = this.getDefaultValue();
@@ -233,10 +227,9 @@ WeatherStationRainy.prototype.setUpServices = function () {
     Characteristic.TimesOpened.UUID = 'E863F129-079E-48FF-8F27-9C2605A29F52';  
 
     Characteristic.ResetTotal = function() {
-    	 Characteristic.call(this, 'times opened', 'E863F112-079E-48FF-8F27-9C2605A29F52');
+    	 Characteristic.call(this, 'reset total', 'E863F112-079E-48FF-8F27-9C2605A29F52');
          this.setProps({
            format: Characteristic.Formats.UINT32,
-           //unit: Characteristic.Units.SECONDS,
            perms: [Characteristic.Perms.READ, Characteristic.Perms.NOTIFY]
          });
          this.value = this.getDefaultValue();
@@ -244,15 +237,15 @@ WeatherStationRainy.prototype.setUpServices = function () {
     inherits(Characteristic.ResetTotal, Characteristic);
     Characteristic.ResetTotal.UUID = 'E863F112-079E-48FF-8F27-9C2605A29F52';  
     
-    this.iceAlertService.addCharacteristic(Characteristic.LastActivation)
+    this.rainAlertService.addCharacteristic(Characteristic.LastActivation)
         .on('get', this.getLastActivation.bind(this));
-    this.iceAlertService.addCharacteristic(Characteristic.TimesOpened)
+    this.rainAlertService.addCharacteristic(Characteristic.TimesOpened)
         .on('get', this.gettimesOpened.bind(this));
-    this.iceAlertService.addCharacteristic(Characteristic.OpenDuration)
+    this.rainAlertService.addCharacteristic(Characteristic.OpenDuration)
         .on('get', this.getOpenDuration.bind(this));
-    this.iceAlertService.addCharacteristic(Characteristic.ClosedDuration)
+    this.rainAlertService.addCharacteristic(Characteristic.ClosedDuration)
         .on('get', this.getClosedDuration.bind(this));
-    this.iceAlertService.addCharacteristic(Characteristic.ResetTotal)
+    this.rainAlertService.addCharacteristic(Characteristic.ResetTotal)
         .on('get', this.getReset.bind(this))
         .on('set', this.setReset.bind(this));
         
@@ -260,7 +253,7 @@ WeatherStationRainy.prototype.setUpServices = function () {
     	this.lastActivation = 0;
     	this.lastReset = moment().unix() - moment('2001-01-01T00:00:00Z').unix();
     	this.lastChange = moment().unix();
-    	this.timeOpened = 0;
+    	this.timesOpened = 0;
     	this.timeOpen = 0;
     	this.timeClose = 0;
            
